@@ -12,6 +12,9 @@ class StubbedUsersDB(db_agent.UsersDB):
     def connect(self, server):
         return Mock()
 
+    def _search_user_in_orgs(self, user_id):
+        return []
+
 class UsersDBTest(unittest.TestCase):
     def setUp(self):
         self.db = StubbedUsersDB(ldap_server='')
@@ -183,24 +186,57 @@ class UsersDBTest(unittest.TestCase):
         assert calls_list == [], "not all calls were made"
 
 
-    def test_user_info(self):
+    def test_get_user_info(self):
+        old_attrs = {
+            'givenName': ["Joe"],
+            'sn': ["Smith"],
+            'cn': ["Joe Smith"],
+            'mail': ["jsmith@example.com"],
+        }
         self.mock_conn.search_s.return_value = [
-            ('uid=usertwo,ou=Users,o=EIONET,l=Europe', {
-                'cn': ['User Two'],
-                'mail': ['user_two@example.com'],
-                'telephoneNumber': ['555 1234 2'],
-                'o': ['Testers Club'],
-            })]
+            ('uid=jsmith,ou=Users,o=EIONET,l=Europe', old_attrs)]
 
-        info = self.db.user_info('usertwo')
+        user_info = self.db.user_info('jsmith')
+
         self.mock_conn.search_s.assert_called_once_with(
-            'uid=usertwo,ou=Users,o=EIONET,l=Europe', ldap.SCOPE_BASE,
+            'uid=jsmith,ou=Users,o=EIONET,l=Europe', ldap.SCOPE_BASE,
             filterstr='(objectClass=organizationalPerson)')
+        self.assertEqual(user_info['first_name'], u"Joe")
+        self.assertEqual(user_info['last_name'], u"Smith")
+        self.assertEqual(user_info['email'], u"jsmith@example.com")
+        self.assertEqual(user_info['full_name'], u"Joe Smith")
 
-        assert info['full_name'] == 'User Two'
-        assert info['email'] == 'user_two@example.com'
-        assert info['phone'] == '555 1234 2'
-        assert info['organisation'] == 'Testers Club'
+    def test_get_user_info_missing_fields(self):
+        data_dict = {
+            'mail': ["jsmith@example.com"],
+        }
+        self.mock_conn.search_s.return_value = [
+            ('uid=jsmith,ou=Users,o=EIONET,l=Europe', data_dict)]
+
+        user_info = self.db.user_info('jsmith')
+
+        self.assertEqual(user_info['email'], "jsmith@example.com")
+        self.assertEqual(user_info['url'], "")
+
+    def test_get_user_info_extra_fields(self):
+        data_dict = {
+            'mail': ["jsmith@example.com"],
+            'uid': ["jsmith"],
+        }
+        self.mock_conn.search_s.return_value = [
+            ('uid=jsmith,ou=Users,o=EIONET,l=Europe', data_dict)]
+
+        user_info = self.db.user_info('jsmith')
+
+        for name, value in user_info.iteritems():
+            if name == 'email':
+                self.assertEqual(value, u"jsmith@example.com")
+            elif name == 'organisation':
+                self.assertEqual(value, db_agent.BLANK_ORG)
+            elif name in ('dn', 'id'):
+                continue
+            else:
+                self.assertEqual(value, u"")
 
     def test_user_info_bad_userid(self):
         self.mock_conn.search_s.return_value = []
@@ -324,6 +360,33 @@ class UsersDBTest(unittest.TestCase):
         self.mock_conn.search_s.side_effect = ldap.NO_SUCH_OBJECT
         self.assertRaises(db_agent.RoleNotFound,
                           self.db.role_info, 'nosuchrole')
+
+    def test_bind_success(self):
+        self.mock_conn.simple_bind_s.return_value = (ldap.RES_BIND, [])
+        self.db.bind_user('jsmith', 'some_pw')
+        self.mock_conn.simple_bind_s.assert_called_once_with(
+            'uid=jsmith,ou=Users,o=EIONET,l=Europe', 'some_pw')
+
+    def test_bind_failure(self):
+        self.mock_conn.simple_bind_s.side_effect = ldap.INVALID_CREDENTIALS
+        self.assertRaises(ValueError, self.db.bind_user, 'jsmith', 'some_pw')
+        self.mock_conn.simple_bind_s.assert_called_once_with(
+            'uid=jsmith,ou=Users,o=EIONET,l=Europe', 'some_pw')
+
+    def test_set_user_password(self):
+        self.mock_conn.passwd_s.return_value = (ldap.RES_EXTENDED, [])
+        self.db.set_user_password('jsmith', 'the_old_pw', 'some_new_pw')
+        self.mock_conn.passwd_s.assert_called_once_with(
+            'uid=jsmith,ou=Users,o=EIONET,l=Europe',
+            'the_old_pw', 'some_new_pw')
+
+    def test_set_user_password_failure(self):
+        self.mock_conn.passwd_s.side_effect = ldap.UNWILLING_TO_PERFORM
+        self.assertRaises(ValueError, self.db.set_user_password,
+                          'jsmith', 'bad_old_pw', 'some_new_pw')
+        self.mock_conn.passwd_s.assert_called_once_with(
+            'uid=jsmith,ou=Users,o=EIONET,l=Europe',
+            'bad_old_pw', 'some_new_pw')
 
 class TestCreateRole(unittest.TestCase):
     def setUp(self):
@@ -792,3 +855,200 @@ class OrganisationEditTest(unittest.TestCase):
                 '\xc5\x83\xc3\xa9w n\xc3\xa6\xe1\xb9\x81']) ]
         self.mock_conn.modify_s.assert_called_once_with(
                 bridge_club_dn, tuple(modify_statements))
+
+class LdapAgentUserEditingTest(unittest.TestCase):
+    def setUp(self):
+        self.db = StubbedUsersDB(ldap_server='')
+        self.mock_conn = self.db.conn
+
+    def test_user_info_diff(self):
+        old_info = {
+            'url': u"http://example.com/~jsmith",
+            'postal_address': u"old address",
+            'phone': u"555 1234",
+        }
+        new_info = {
+            'email': u"jsmith@example.com",
+            'postal_address': u"Kongens Nytorv 6, Copenhagen, Denmark",
+            'phone': u"555 1234",
+        }
+
+        diff = self.db._user_info_diff('jsmith', old_info, new_info, [])
+
+        self.assertEqual(diff, {'uid=jsmith,ou=Users,o=EIONET,l=Europe': [
+            (ldap.MOD_ADD, 'mail', ['jsmith@example.com']),
+            (ldap.MOD_DELETE, 'labeledURI', ['http://example.com/~jsmith']),
+            (ldap.MOD_REPLACE, 'postalAddress', [
+                                    'Kongens Nytorv 6, Copenhagen, Denmark']),
+        ]})
+
+    def test_update_full_name(self):
+        old_info = {'first_name': u"Joe", 'last_name': u"Smith"}
+        self.db._update_full_name(old_info) # that's what we expect in LDAP
+        user_info = {'first_name': u"Tester", 'last_name': u"Smith"}
+
+        diff = self.db._user_info_diff('jsmith', old_info, user_info, [])
+
+        self.assertEqual(diff, {'uid=jsmith,ou=Users,o=EIONET,l=Europe': [
+            (ldap.MOD_REPLACE, 'givenName', ['Tester']),
+            (ldap.MOD_REPLACE, 'cn', ['Tester Smith']),
+        ]})
+
+    def test_change_nothing(self):
+        old_attrs = {'mail': ['jsmith@example.com']}
+        self.mock_conn.search_s.return_value = [
+            ('uid=jsmith,ou=Users,o=EIONET,l=Europe', old_attrs)]
+        self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
+
+        self.db.set_user_info('jsmith', {'email': u'jsmith@example.com'})
+
+        assert self.mock_conn.modify_s.call_count == 0
+
+    def test_add_one(self):
+        old_attrs = {}
+        self.mock_conn.search_s.return_value = [
+            ('uid=jsmith,ou=Users,o=EIONET,l=Europe', old_attrs)]
+        self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
+
+        self.db.set_user_info('jsmith', {'email': u'jsmith@example.com'})
+
+        modify_statements = (
+            (ldap.MOD_ADD, 'mail', ["jsmith@example.com"]),
+        )
+        self.mock_conn.modify_s.assert_called_once_with(
+            self.db._user_dn('jsmith'), modify_statements)
+
+    def test_remove_one(self):
+        old_attrs = {'mail': ['jsmith@example.com']}
+        self.mock_conn.search_s.return_value = [
+            ('uid=jsmith,ou=Users,o=EIONET,l=Europe', old_attrs)]
+        self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
+
+        self.db.set_user_info('jsmith', {})
+
+        modify_statements = (
+            (ldap.MOD_DELETE, 'mail', ["jsmith@example.com"]),
+        )
+        self.mock_conn.modify_s.assert_called_once_with(
+            self.db._user_dn('jsmith'), modify_statements)
+
+    def test_update_one(self):
+        old_attrs = {'mail': ['jsmith@example.com']}
+        self.mock_conn.search_s.return_value = [
+            ('uid=jsmith,ou=Users,o=EIONET,l=Europe', old_attrs)]
+        self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
+
+        self.db.set_user_info('jsmith', {'email': u'jsmith@x.example.com'})
+
+        modify_statements = (
+            (ldap.MOD_REPLACE, 'mail', ["jsmith@x.example.com"]),
+        )
+        self.mock_conn.modify_s.assert_called_once_with(
+            self.db._user_dn('jsmith'), modify_statements)
+
+    def test_unicode(self):
+        old_attrs = {'postalAddress': ['The old address']}
+        self.mock_conn.search_s.return_value = [
+            ('uid=jsmith,ou=Users,o=EIONET,l=Europe', old_attrs)]
+        self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
+
+        china = u"\u4e2d\u56fd"
+        user_info = {'postal_address': u"Somewhere in " + china}
+
+        self.db.set_user_info('jsmith', user_info)
+
+        modify_statements = (
+            (ldap.MOD_REPLACE, 'postalAddress', [
+                "Somewhere in " + china.encode('utf-8')]),
+        )
+        self.mock_conn.modify_s.assert_called_once_with(
+            self.db._user_dn('jsmith'), modify_statements)
+
+
+class LdapAgentOrganisationsTest(unittest.TestCase):
+    def setUp(self):
+        self.db = StubbedUsersDB(ldap_server='')
+        self.mock_conn = self.db.conn
+
+    def test_get_literal_org(self):
+        # get organisation from user's `o` attribute
+        data_dict = {'o': ['My bridge club']}
+        self.mock_conn.search_s.return_value = [
+            ('uid=jsmith,ou=Users,o=EIONET,l=Europe', data_dict)]
+
+        user_info = self.db.user_info('jsmith')
+
+        self.assertEqual(user_info['organisation'],
+                         (db_agent.ORG_LITERAL, u"My bridge club"))
+
+    def test_set_literal_org(self):
+        jsmith_dn = self.db._user_dn('jsmith')
+        self.mock_conn.search_s.return_value = [(jsmith_dn, {})]
+        self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
+
+        self.db.set_user_info('jsmith', {
+            'organisation': (db_agent.ORG_LITERAL, u"Ze new organisation")})
+
+        modify_statements = (
+            (ldap.MOD_ADD, 'o', ["Ze new organisation"]),
+        )
+        self.mock_conn.modify_s.assert_called_once_with(
+            jsmith_dn, modify_statements)
+
+    def test_search_user_in_orgs(self):
+        self.mock_conn.search_s.return_value = [
+            ('cn=org_one,ou=Organisations,o=EIONET,l=Europe', {}),
+            ('cn=org_two,ou=Organisations,o=EIONET,l=Europe', {}),
+        ]
+
+        org_ids = db_agent.UsersDB._search_user_in_orgs(self.db, 'jsmith')
+
+        filterstr = ('(&(objectClass=organizationGroup)'
+                       '(uniqueMember=uid=jsmith,ou=Users,o=EIONET,l=Europe))')
+        self.mock_conn.search_s.assert_called_once_with(
+            'ou=Organisations,o=EIONET,l=Europe', ldap.SCOPE_ONELEVEL,
+            filterstr=filterstr, attrlist=())
+        self.assertEqual(org_ids, ['org_one', 'org_two'])
+
+    def test_get_member_org(self):
+        jsmith_dn = self.db._user_dn('jsmith')
+        self.mock_conn.search_s.return_value = [(jsmith_dn, {})]
+        self.db._search_user_in_orgs = Mock(return_value=['bridge_club',
+                                                             'poker_club'])
+
+        user_info = self.db.user_info('jsmith')
+
+        self.assertEqual(user_info['organisation'],
+                         (db_agent.ORG_BY_ID, 'bridge_club'))
+
+    def test_set_member_org(self):
+        jsmith_dn = self.db._user_dn('jsmith')
+        bridge_club_dn = self.db._org_dn('bridge_club')
+        self.mock_conn.search_s.return_value = [(jsmith_dn, {})]
+        self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
+
+        self.db.set_user_info('jsmith', {'organisation':
+                                (db_agent.ORG_BY_ID, 'bridge_club')})
+
+        self.mock_conn.modify_s.assert_called_once_with(
+            bridge_club_dn, ((ldap.MOD_ADD, 'uniqueMember', [jsmith_dn]),))
+
+    def test_change_member_org(self):
+        jsmith_dn = self.db._user_dn('jsmith')
+        bridge_club_dn = self.db._org_dn('bridge_club')
+        poker_club_dn = self.db._org_dn('poker_club')
+        yachting_club_dn = self.db._org_dn('yachting_club')
+        self.db._search_user_in_orgs = Mock(return_value=['bridge_club',
+                                                             'poker_club'])
+
+        diff = self.db._user_info_diff('jsmith',
+                {'organisation': (db_agent.ORG_LITERAL, u"My own little club")},
+                {'organisation': (db_agent.ORG_BY_ID, 'yachting_club')},
+                ['bridge_club', 'poker_club'])
+
+        self.assertEqual(diff, {
+            jsmith_dn: [(ldap.MOD_DELETE, 'o', [u"My own little club"])],
+            bridge_club_dn: [(ldap.MOD_DELETE, 'uniqueMember', [jsmith_dn])],
+            poker_club_dn: [(ldap.MOD_DELETE, 'uniqueMember', [jsmith_dn])],
+            yachting_club_dn: [(ldap.MOD_ADD, 'uniqueMember', [jsmith_dn])],
+        })
