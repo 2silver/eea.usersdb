@@ -2,20 +2,20 @@ import unittest
 from copy import deepcopy
 
 import ldap
-from eea.ldapadmin import ldap_agent
+from eea.usersdb import db_agent
 from mock import Mock, patch, wraps
 from mock_recorder import Recorder
 
 import fixtures
 
-class StubbedLdapAgent(ldap_agent.LdapAgent):
+class StubbedUsersDB(db_agent.UsersDB):
     def connect(self, server):
         return Mock()
 
-class LdapAgentTest(unittest.TestCase):
+class UsersDBTest(unittest.TestCase):
     def setUp(self):
-        self.agent = StubbedLdapAgent(ldap_server='')
-        self.mock_conn = self.agent.conn
+        self.db = StubbedUsersDB(ldap_server='')
+        self.mock_conn = self.db.conn
 
     def test_user_dn_conversion(self):
         user_values = {
@@ -26,8 +26,8 @@ class LdapAgentTest(unittest.TestCase):
             '-': 'uid=-,ou=Users,o=EIONET,l=Europe',
         }
         for user_id, user_dn in user_values.iteritems():
-            assert self.agent._user_dn(user_id) == user_dn
-            assert self.agent._user_id(user_dn) == user_id
+            assert self.db._user_dn(user_id) == user_dn
+            assert self.db._user_id(user_dn) == user_id
         bad_user_dns = [
             'asdf',
             'uid=a,cn=xxx,ou=Users,o=EIONET,l=Europe',
@@ -35,7 +35,7 @@ class LdapAgentTest(unittest.TestCase):
             'a,ou=Users,o=EIONET,l=Europe',
         ]
         for bad_dn in bad_user_dns:
-            self.assertRaises(AssertionError, self.agent._user_id, bad_dn)
+            self.assertRaises(AssertionError, self.db._user_id, bad_dn)
 
     def test_org_dn_conversion(self):
         org_values = {
@@ -46,8 +46,8 @@ class LdapAgentTest(unittest.TestCase):
             '-': 'cn=-,ou=Organisations,o=EIONET,l=Europe',
         }
         for org_id, org_dn in org_values.iteritems():
-            assert self.agent._org_dn(org_id) == org_dn
-            assert self.agent._org_id(org_dn) == org_id
+            assert self.db._org_dn(org_id) == org_dn
+            assert self.db._org_id(org_dn) == org_id
         bad_org_dns = [
             'asdf',
             'cn=a,cn=xxx,ou=Organisations,o=EIONET,l=Europe',
@@ -55,7 +55,7 @@ class LdapAgentTest(unittest.TestCase):
             'a,ou=Organisations,o=EIONET,l=Europe',
         ]
         for bad_dn in bad_org_dns:
-            self.assertRaises(AssertionError, self.agent._org_id, bad_dn)
+            self.assertRaises(AssertionError, self.db._org_id, bad_dn)
 
     def test_role_dn_conversion(self):
         role_values = {
@@ -72,8 +72,8 @@ class LdapAgentTest(unittest.TestCase):
             None: 'ou=Roles,o=EIONET,l=Europe',
         }
         for role_id, role_dn in role_values.iteritems():
-            assert self.agent._role_dn(role_id) == role_dn
-            assert self.agent._role_id(role_dn) == role_id
+            assert self.db._role_dn(role_id) == role_dn
+            assert self.db._role_id(role_dn) == role_id
         bad_role_dns = [
             'asdf',
             'a,ou=Users,o=EIONET,l=Europe',
@@ -83,13 +83,13 @@ class LdapAgentTest(unittest.TestCase):
             'cn=cad-x-aaa-bbb,cn=aaa-bbb,cn=aaa,ou=Roles,o=EIONET,l=Europe',
         ]
         for bad_dn in bad_role_dns:
-            self.assertRaises(AssertionError, self.agent._role_id, bad_dn)
+            self.assertRaises(AssertionError, self.db._role_id, bad_dn)
 
     def test_role_names_in_role(self):
         self.mock_conn.search_s.return_value = [
             ('cn=A,ou=Roles,o=EIONET,l=Europe', {'description': ["Role [A]"]}),
             ('cn=K,ou=Roles,o=EIONET,l=Europe', {'description': ["Role [K]"]})]
-        assert self.agent.role_names_in_role(None) == {'A': "Role [A]",
+        assert self.db.role_names_in_role(None) == {'A': "Role [A]",
                                                        'K': "Role [K]"}
         self.mock_conn.search_s.assert_called_once_with(
            'ou=Roles,o=EIONET,l=Europe', ldap.SCOPE_ONELEVEL,
@@ -103,7 +103,7 @@ class LdapAgentTest(unittest.TestCase):
              {'description': ["Role [A B]"]}),
             ('cn=A-C,cn=A,ou=Roles,o=EIONET,l=Europe',
              {'description': ["Role [A C]"]})]
-        assert self.agent.role_names_in_role('A') == {'A-B': "Role [A B]",
+        assert self.db.role_names_in_role('A') == {'A-B': "Role [A B]",
                                                       'A-C': "Role [A C]"}
         self.mock_conn.search_s.assert_called_once_with(
            'cn=A,ou=Roles,o=EIONET,l=Europe', ldap.SCOPE_ONELEVEL,
@@ -113,16 +113,16 @@ class LdapAgentTest(unittest.TestCase):
 
         self.mock_conn.search_s = Mock()
         self.mock_conn.search_s.return_value = []
-        assert self.agent.role_names_in_role('A-B') == {}
+        assert self.db.role_names_in_role('A-B') == {}
         self.mock_conn.search_s.assert_called_once_with(
            'cn=A-B,cn=A,ou=Roles,o=EIONET,l=Europe', ldap.SCOPE_ONELEVEL,
            attrlist=('description',),
            filterstr='(objectClass=groupOfUniqueNames)')
 
     def test_members_in_role(self):
-        role_dn = self.agent._role_dn
-        user_dn = self.agent._user_dn
-        org_dn = self.agent._org_dn
+        role_dn = self.db._role_dn
+        user_dn = self.db._user_dn
+        org_dn = self.db._org_dn
 
         calls_list = []
         def mock_called(dn, scope, **kwargs):
@@ -144,7 +144,7 @@ class LdapAgentTest(unittest.TestCase):
                 (role_dn('A-B'), {'uniqueMember': [ user_dn('userone') ]}),
              ]),
         ]
-        assert self.agent.members_in_role('A') == {'users': [], 'orgs': []}
+        assert self.db.members_in_role('A') == {'users': [], 'orgs': []}
         assert calls_list == [], "not all calls were made"
 
         # a local user
@@ -161,7 +161,7 @@ class LdapAgentTest(unittest.TestCase):
                                                     org_dn('air_agency') ]}),
              ]),
         ]
-        assert self.agent.members_in_role('A') == {'users': ['userone'],
+        assert self.db.members_in_role('A') == {'users': ['userone'],
                                                    'orgs': []}
         assert calls_list == [], "not all calls were made"
 
@@ -178,7 +178,7 @@ class LdapAgentTest(unittest.TestCase):
                 (role_dn('A-C'), {'uniqueMember': [ user_dn('userthree') ]}),
              ]),
         ]
-        assert self.agent.members_in_role('A') == {'users': ['userone'],
+        assert self.db.members_in_role('A') == {'users': ['userone'],
                                                    'orgs': ['air_agency']}
         assert calls_list == [], "not all calls were made"
 
@@ -192,7 +192,7 @@ class LdapAgentTest(unittest.TestCase):
                 'o': ['Testers Club'],
             })]
 
-        info = self.agent.user_info('usertwo')
+        info = self.db.user_info('usertwo')
         self.mock_conn.search_s.assert_called_once_with(
             'uid=usertwo,ou=Users,o=EIONET,l=Europe', ldap.SCOPE_BASE,
             filterstr='(objectClass=organizationalPerson)')
@@ -204,14 +204,14 @@ class LdapAgentTest(unittest.TestCase):
 
     def test_user_info_bad_userid(self):
         self.mock_conn.search_s.return_value = []
-        self.assertRaises(AssertionError, self.agent.user_info, 'nosuchuser')
+        self.assertRaises(AssertionError, self.db.user_info, 'nosuchuser')
 
     def test_org_info(self):
         self.mock_conn.search_s.return_value = [
             ('cn=air_agency,ou=Organisations,o=EIONET,l=Europe',
              {'o': ['Agency for Air Studies'],
               'labeledURI': ['http://www.air_agency.example.com']})]
-        info = self.agent.org_info('air_agency')
+        info = self.db.org_info('air_agency')
         self.mock_conn.search_s.assert_called_once_with(
             'cn=air_agency,ou=Organisations,o=EIONET,l=Europe',
             ldap.SCOPE_BASE)
@@ -247,11 +247,11 @@ class LdapAgentTest(unittest.TestCase):
         role_id_list = [None, 'A', 'A-B', 'A-C', 'K', 'K-L', 'K-L-O',
                         'K-M', 'K-M-O', 'K-N', 'K-N-O', 'K-N-O-P', 'K-N-T',
                         'X-YADF-Z', 'X-Y-ZE']
-        ret = [(self.agent._role_dn(role_id), {}) for role_id in role_id_list]
+        ret = [(self.db._role_dn(role_id), {}) for role_id in role_id_list]
 
         for pattern, expected in expected_results.iteritems():
             self.mock_conn.search_s = Mock(return_value=deepcopy(ret))
-            result = self.agent.filter_roles(pattern)
+            result = self.db.filter_roles(pattern)
             self.mock_conn.search_s.assert_called_once_with(
                 'ou=Roles,o=EIONET,l=Europe', ldap.SCOPE_SUBTREE,
                 filterstr='(objectClass=groupOfUniqueNames)', attrlist=())
@@ -260,11 +260,11 @@ class LdapAgentTest(unittest.TestCase):
 
     def test_delete_role(self):
         roles_to_delete = ['K', 'K-L', 'K-L-O', 'K-M']
-        self.agent._bound = True
-        self.mock_conn.search_s.return_value = [ (self.agent._role_dn(r), {})
+        self.db._bound = True
+        self.mock_conn.search_s.return_value = [ (self.db._role_dn(r), {})
                                                  for r in roles_to_delete ]
         self.mock_conn.delete_s.return_value = (ldap.RES_DELETE, [])
-        self.agent.delete_role('K')
+        self.db.delete_role('K')
 
         self.mock_conn.search_s.assert_called_once_with(
             'cn=K,ou=Roles,o=EIONET,l=Europe', ldap.SCOPE_SUBTREE,
@@ -274,66 +274,66 @@ class LdapAgentTest(unittest.TestCase):
         roles_to_delete.reverse()
         for args, kwargs in self.mock_conn.delete_s.call_args_list:
             assert kwargs == {}
-            assert args == (self.agent._role_dn(roles_to_delete.pop(0)),)
+            assert args == (self.db._role_dn(roles_to_delete.pop(0)),)
         assert roles_to_delete == []
 
         # TODO: assert error when deleting non-existent role
         # TODO: test deleting top-level role
 
     def test_search_user(self):
-        self.agent._unpack_user_info = Mock()
-        jsmith_dn = self.agent._user_dn('jsmith')
+        self.db._unpack_user_info = Mock()
+        jsmith_dn = self.db._user_dn('jsmith')
         jsmith_info = Mock()
         self.mock_conn.search_s.return_value = [ (jsmith_dn, jsmith_info) ]
 
-        results = self.agent.search_user(u'SM\u012bth')
+        results = self.db.search_user(u'SM\u012bth')
 
         self.mock_conn.search_s.assert_called_once_with(
-            self.agent._user_dn_suffix, ldap.SCOPE_ONELEVEL,
+            self.db._user_dn_suffix, ldap.SCOPE_ONELEVEL,
             filterstr=('(&(objectClass=person)(|(uid=*sm\xc4\xabth*)'
                                                '(cn=*sm\xc4\xabth*)))'))
-        self.agent._unpack_user_info.assert_called_with(jsmith_dn, jsmith_info)
-        self.assertEqual(results, [self.agent._unpack_user_info.return_value])
+        self.db._unpack_user_info.assert_called_with(jsmith_dn, jsmith_info)
+        self.assertEqual(results, [self.db._unpack_user_info.return_value])
 
     def test_search_org(self):
-        self.agent._unpack_org_info = Mock()
-        club_dn = self.agent._org_dn('bridge_club')
+        self.db._unpack_org_info = Mock()
+        club_dn = self.db._org_dn('bridge_club')
         club_info = Mock()
         self.mock_conn.search_s.return_value = [ (club_dn, club_info) ]
 
-        results = self.agent.search_org(u'Br\u012bdGe')
+        results = self.db.search_org(u'Br\u012bdGe')
 
         self.mock_conn.search_s.assert_called_once_with(
-            self.agent._org_dn_suffix, ldap.SCOPE_ONELEVEL,
+            self.db._org_dn_suffix, ldap.SCOPE_ONELEVEL,
             filterstr=('(&(objectClass=organizationGroup)'
                          '(|(cn=*br\xc4\xabdge*)(o=*br\xc4\xabdge*)))'))
-        self.agent._unpack_org_info.assert_called_with(club_dn, club_info)
-        self.assertEqual(results, [self.agent._unpack_org_info.return_value])
+        self.db._unpack_org_info.assert_called_with(club_dn, club_info)
+        self.assertEqual(results, [self.db._unpack_org_info.return_value])
 
     def test_role_info(self):
-        role_dn = self.agent._role_dn('somerole')
+        role_dn = self.db._role_dn('somerole')
         self.mock_conn.search_s.return_value = [(role_dn, {
             'description': ['Some r\xc5\x8dle'],
         })]
-        role_info = self.agent.role_info('somerole')
+        role_info = self.db.role_info('somerole')
         self.mock_conn.search_s.assert_called_once_with(
             role_dn, ldap.SCOPE_BASE)
         self.assertEqual(role_info, {'description': u"Some r\u014dle"})
 
     def test_role_info_not_found(self):
         self.mock_conn.search_s.side_effect = ldap.NO_SUCH_OBJECT
-        self.assertRaises(ldap_agent.RoleNotFound,
-                          self.agent.role_info, 'nosuchrole')
+        self.assertRaises(db_agent.RoleNotFound,
+                          self.db.role_info, 'nosuchrole')
 
 class TestCreateRole(unittest.TestCase):
     def setUp(self):
-        self.agent = StubbedLdapAgent(ldap_server='')
-        self.mock_conn = self.agent.conn
-        self.agent._bound = True
+        self.db = StubbedUsersDB(ldap_server='')
+        self.mock_conn = self.db.conn
+        self.db._bound = True
         self.mock_conn.add_s.return_value=(ldap.RES_ADD, [])
 
     def test_create(self):
-        self.agent.create_role('A-B-X', "My new test role")
+        self.db.create_role('A-B-X', "My new test role")
         self.mock_conn.add_s.assert_called_once_with(
             'cn=A-B-X,cn=A-B,cn=A,ou=Roles,o=EIONET,l=Europe',
             [('objectClass', ['top', 'groupOfUniqueNames']),
@@ -343,14 +343,14 @@ class TestCreateRole(unittest.TestCase):
 
     def test_existing_role(self):
         self.mock_conn.add_s.side_effect = ldap.NO_SUCH_OBJECT
-        self.assertRaises(ValueError, self.agent.create_role, 'A-C', "blah")
+        self.assertRaises(ValueError, self.db.create_role, 'A-C', "blah")
 
     def test_missing_parent(self):
         self.mock_conn.add_s.side_effect = ldap.ALREADY_EXISTS
-        self.assertRaises(ValueError, self.agent.create_role, 'A-X-Y', "blah")
+        self.assertRaises(ValueError, self.db.create_role, 'A-X-Y', "blah")
 
     def test_empty_description(self):
-        self.agent.create_role('A-B-Z', "")
+        self.db.create_role('A-B-Z', "")
         self.mock_conn.add_s.assert_called_once_with(
             'cn=A-B-Z,cn=A-B,cn=A,ou=Roles,o=EIONET,l=Europe',
             [('objectClass',
@@ -359,7 +359,7 @@ class TestCreateRole(unittest.TestCase):
              ('uniqueMember', [''])])
 
     def test_create_top_role(self):
-        self.agent.create_role('T', "top role")
+        self.db.create_role('T', "top role")
         self.mock_conn.add_s.assert_called_once_with(
             'cn=T,ou=Roles,o=EIONET,l=Europe',
             [('objectClass', ['top', 'groupOfUniqueNames']),
@@ -368,7 +368,7 @@ class TestCreateRole(unittest.TestCase):
              ('description', ['top role']),])
 
     def test_unicode(self):
-        self.agent.create_role('r', u"Some r\u014dle")
+        self.db.create_role('r', u"Some r\u014dle")
         self.mock_conn.add_s.assert_called_once_with(
             'cn=r,ou=Roles,o=EIONET,l=Europe',
             [('objectClass', ['top', 'groupOfUniqueNames']),
@@ -378,25 +378,25 @@ class TestCreateRole(unittest.TestCase):
 
 class TestAddToRole(unittest.TestCase):
     def setUp(self):
-        self.agent = StubbedLdapAgent(ldap_server='')
-        self.mock_conn = self.agent.conn
-        self.agent._bound = True
+        self.db = StubbedUsersDB(ldap_server='')
+        self.mock_conn = self.db.conn
+        self.db._bound = True
 
     def test_missing_user(self):
-        user_dn = self.agent._user_dn
-        role_dn = self.agent._role_dn
+        user_dn = self.db._user_dn
+        role_dn = self.db._role_dn
 
         self.mock_conn.search_s.return_value = []
 
-        self.assertRaises(ValueError, self.agent._add_member_dn_to_role_dn,
+        self.assertRaises(ValueError, self.db._add_member_dn_to_role_dn,
                           role_dn('K-N-O'), user_dn('x'))
 
         self.mock_conn.search_s.assert_called_once_with(
                 user_dn('x'), ldap.SCOPE_BASE, attrlist=())
 
     def test_missing_role(self):
-        user_dn = self.agent._user_dn
-        role_dn = self.agent._role_dn
+        user_dn = self.db._user_dn
+        role_dn = self.db._role_dn
 
         recorder = self.mock_conn.search_s.side_effect = Recorder()
         recorder.expect(user_dn('userone'), ldap.SCOPE_BASE, attrlist=(),
@@ -404,14 +404,14 @@ class TestAddToRole(unittest.TestCase):
         recorder.expect(role_dn('K-N-X'), ldap.SCOPE_BASE, attrlist=(),
                         return_value=[])
 
-        self.assertRaises(ValueError, self.agent._add_member_dn_to_role_dn,
+        self.assertRaises(ValueError, self.db._add_member_dn_to_role_dn,
                           role_dn('K-N-X'), user_dn('userone'))
 
         recorder.assert_end()
 
     def test_add(self):
-        user_dn = self.agent._user_dn
-        role_dn = self.agent._role_dn
+        user_dn = self.db._user_dn
+        role_dn = self.db._role_dn
 
         search_recorder = self.mock_conn.search_s.side_effect = Recorder()
         search_recorder.expect(user_dn('userone'), ldap.SCOPE_BASE,
@@ -431,7 +431,7 @@ class TestAddToRole(unittest.TestCase):
                                    ((ldap.MOD_DELETE, 'uniqueMember', ['']),),
                                    return_value=(ldap.RES_MODIFY, []))
 
-        self.agent._add_member_dn_to_role_dn(role_dn('K-N-O'),
+        self.db._add_member_dn_to_role_dn(role_dn('K-N-O'),
                                              user_dn('userone'))
 
         search_recorder.assert_end()
@@ -439,17 +439,17 @@ class TestAddToRole(unittest.TestCase):
 
 class TestRemoveFromRole(unittest.TestCase):
     def setUp(self):
-        self.agent = StubbedLdapAgent(ldap_server='')
-        self.mock_conn = self.agent.conn
+        self.db = StubbedUsersDB(ldap_server='')
+        self.mock_conn = self.db.conn
 
     def test_missing_user(self):
-        user_dn = self.agent._user_dn
-        role_dn = self.agent._role_dn
-        mock_rm = self.agent._remove_member_dn_from_single_role_dn = Mock()
+        user_dn = self.db._user_dn
+        role_dn = self.db._role_dn
+        mock_rm = self.db._remove_member_dn_from_single_role_dn = Mock()
         self.mock_conn.search_s.return_value = []
 
         self.assertRaises(ValueError,
-                          self.agent._remove_member_dn_from_role_dn,
+                          self.db._remove_member_dn_from_role_dn,
                           role_dn('K-N-O'), user_dn('x'))
 
         self.mock_conn.search_s.assert_called_once_with(
@@ -457,9 +457,9 @@ class TestRemoveFromRole(unittest.TestCase):
         assert mock_rm.call_count == 0
 
     def test_missing_role(self):
-        user_dn = self.agent._user_dn
-        role_dn = self.agent._role_dn
-        mock_rm = self.agent._remove_member_dn_from_single_role_dn = Mock()
+        user_dn = self.db._user_dn
+        role_dn = self.db._role_dn
+        mock_rm = self.db._remove_member_dn_from_single_role_dn = Mock()
         recorder = self.mock_conn.search_s.side_effect = Recorder()
         recorder.expect(user_dn('userone'), ldap.SCOPE_BASE, attrlist=(),
                         return_value=[(user_dn('userone'), {})])
@@ -467,16 +467,16 @@ class TestRemoveFromRole(unittest.TestCase):
                         return_value=[])
 
         self.assertRaises(ValueError,
-                          self.agent._remove_member_dn_from_role_dn,
+                          self.db._remove_member_dn_from_role_dn,
                           role_dn('K-N-X'), user_dn('userone'))
 
         recorder.assert_end()
         assert mock_rm.call_count == 0
 
     def test_non_member(self):
-        user_dn = self.agent._user_dn
-        role_dn = self.agent._role_dn
-        mock_rm = self.agent._remove_member_dn_from_single_role_dn = Mock()
+        user_dn = self.db._user_dn
+        role_dn = self.db._role_dn
+        mock_rm = self.db._remove_member_dn_from_single_role_dn = Mock()
         recorder = self.mock_conn.search_s.side_effect = Recorder()
         the_filter = ('(&(objectClass=groupOfUniqueNames)'
                       '(uniqueMember=%s))') % user_dn('userone')
@@ -488,16 +488,16 @@ class TestRemoveFromRole(unittest.TestCase):
                         filterstr=the_filter, return_value=[])
 
         self.assertRaises(ValueError,
-                          self.agent._remove_member_dn_from_role_dn,
+                          self.db._remove_member_dn_from_role_dn,
                           role_dn('K-N-O'), user_dn('userone'))
 
         recorder.assert_end()
         assert mock_rm.call_count == 0
 
     def test_remove(self):
-        user_dn = self.agent._user_dn
-        role_dn = self.agent._role_dn
-        mock_rm = self.agent._remove_member_dn_from_single_role_dn = Mock()
+        user_dn = self.db._user_dn
+        role_dn = self.db._role_dn
+        mock_rm = self.db._remove_member_dn_from_single_role_dn = Mock()
         recorder = self.mock_conn.search_s.side_effect = Recorder()
         the_filter = ('(&(objectClass=groupOfUniqueNames)'
                       '(uniqueMember=%s))') % user_dn('userone')
@@ -512,7 +512,7 @@ class TestRemoveFromRole(unittest.TestCase):
                                        (role_dn('K-N-P-Q'), {}),
                                        (role_dn('K-N'), {}) ])
 
-        self.agent._remove_member_dn_from_role_dn(role_dn('K-N'),
+        self.db._remove_member_dn_from_role_dn(role_dn('K-N'),
                                                   user_dn('userone'))
 
         recorder.assert_end()
@@ -538,8 +538,8 @@ org_info_fixture = {
 
 class OrganisationsTest(unittest.TestCase):
     def setUp(self):
-        self.agent = StubbedLdapAgent(ldap_server='')
-        self.mock_conn = self.agent.conn
+        self.db = StubbedUsersDB(ldap_server='')
+        self.mock_conn = self.db.conn
 
     def test_get_organisation(self):
         bridge_club_dn = 'cn=bridge_club,ou=Organisations,o=EIONET,l=Europe'
@@ -557,7 +557,7 @@ class OrganisationsTest(unittest.TestCase):
             'labeledURI': ['http://bridge.example.com/'],
         })]
 
-        org_info = self.agent.org_info('bridge_club')
+        org_info = self.db.org_info('bridge_club')
 
         self.mock_conn.search_s.assert_called_once_with(
                 bridge_club_dn, ldap.SCOPE_BASE)
@@ -568,10 +568,10 @@ class OrganisationsTest(unittest.TestCase):
             assert type(org_info[name]) is unicode
 
     def test_create_organisation(self):
-        self.agent._bound = True
+        self.db._bound = True
         self.mock_conn.add_s.return_value = (ldap.RES_ADD, [])
 
-        self.agent.create_org('poker_club', {
+        self.db.create_org('poker_club', {
             'name': u"P\xf8ker club",
             'url': u"http://poker.example.com/",
         })
@@ -586,24 +586,24 @@ class OrganisationsTest(unittest.TestCase):
         ])
 
     def test_delete_organisation(self):
-        self.agent._bound = True
+        self.db._bound = True
         self.mock_conn.delete_s.return_value = (ldap.RES_DELETE, [])
         poker_club_dn = 'cn=poker_club,ou=Organisations,o=EIONET,l=Europe'
 
-        self.agent.delete_org('poker_club')
+        self.db.delete_org('poker_club')
 
         self.mock_conn.delete_s.assert_called_once_with(poker_club_dn)
 
     def test_rename_organisation(self):
-        self.agent._bound = True
-        org_dn = self.agent._org_dn
-        role_dn = self.agent._role_dn
+        self.db._bound = True
+        org_dn = self.db._org_dn
+        role_dn = self.db._role_dn
         self.mock_conn.rename_s.return_value = (ldap.RES_MODRDN, [])
         self.mock_conn.search_s.return_value = [
             (role_dn('eionet'), {}), (role_dn('eionet-something'), {})]
         self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
 
-        self.agent.rename_org('bridge_club', 'tunnel_club')
+        self.db.rename_org('bridge_club', 'tunnel_club')
 
         self.mock_conn.rename_s.assert_called_once_with(
             org_dn('bridge_club'), 'cn=tunnel_club')
@@ -621,21 +621,21 @@ class OrganisationsTest(unittest.TestCase):
              {})])
 
     def test_rename_organisation_fail(self):
-        self.agent._bound = True
-        org_dn = self.agent._org_dn
-        role_dn = self.agent._role_dn
+        self.db._bound = True
+        org_dn = self.db._org_dn
+        role_dn = self.db._role_dn
         self.mock_conn.rename_s.side_effect = ldap.ALREADY_EXISTS
 
-        self.assertRaises(ldap_agent.NameAlreadyExists,
-                          self.agent.rename_org, 'bridge_club', 'tunnel_club')
+        self.assertRaises(db_agent.NameAlreadyExists,
+                          self.db.rename_org, 'bridge_club', 'tunnel_club')
 
         self.mock_conn.rename_s = Mock(return_value = (ldap.RES_MODRDN, []))
         self.mock_conn.search_s.return_value = [
             (role_dn('eionet'), {}), (role_dn('eionet-something'), {})]
         self.mock_conn.modify_s.side_effect = ValueError # any error will do
 
-        self.assertRaises(ldap_agent.OrgRenameError,
-                          self.agent.rename_org, 'bridge_club', 'tunnel_club')
+        self.assertRaises(db_agent.OrgRenameError,
+                          self.db.rename_org, 'bridge_club', 'tunnel_club')
 
     def test_get_all_organisations(self):
         self.mock_conn.search_s.return_value = [
@@ -645,7 +645,7 @@ class OrganisationsTest(unittest.TestCase):
                 'o': ["P\xc3\xb6ker club"]})
         ]
 
-        orgs = self.agent.all_organisations()
+        orgs = self.db.all_organisations()
 
         self.assertEqual(orgs, {'bridge_club': u"Bridge club",
                                 'poker_club': u"P\xf6ker club"})
@@ -660,7 +660,7 @@ class OrganisationsTest(unittest.TestCase):
                                  'uid=jsmith,ou=Users,o=EIONET,l=Europe']
             })]
 
-        members = self.agent.members_in_org('bridge_club')
+        members = self.db.members_in_org('bridge_club')
 
         self.assertEqual(set(members), set(['anne', 'jsmith']))
         self.mock_conn.search_s.assert_called_once_with(
@@ -669,10 +669,10 @@ class OrganisationsTest(unittest.TestCase):
 
     def test_remove_from_org(self):
         self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
-        self.agent._bound = True
-        self.agent.members_in_org = Mock(return_value=['anne', 'jsmith', 'xy'])
+        self.db._bound = True
+        self.db.members_in_org = Mock(return_value=['anne', 'jsmith', 'xy'])
 
-        self.agent.remove_from_org('bridge_club', ['anne', 'jsmith'])
+        self.db.remove_from_org('bridge_club', ['anne', 'jsmith'])
 
         self.mock_conn.modify_s.assert_called_once_with(
             'cn=bridge_club,ou=Organisations,o=EIONET,l=Europe', (
@@ -684,11 +684,11 @@ class OrganisationsTest(unittest.TestCase):
 
     def test_remove_from_org_all_members(self):
         self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
-        self.agent._bound = True
-        self.agent.members_in_org = Mock(return_value=['anne', 'jsmith'])
+        self.db._bound = True
+        self.db.members_in_org = Mock(return_value=['anne', 'jsmith'])
         self.mock_conn.modify_s.reset_mock()
 
-        self.agent.remove_from_org('bridge_club', ['anne', 'jsmith'])
+        self.db.remove_from_org('bridge_club', ['anne', 'jsmith'])
 
         self.mock_conn.modify_s.assert_called_once_with(
             'cn=bridge_club,ou=Organisations,o=EIONET,l=Europe', (
@@ -701,10 +701,10 @@ class OrganisationsTest(unittest.TestCase):
 
     def test_add_to_org(self):
         self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
-        self.agent._bound = True
-        self.agent.members_in_org = Mock(return_value=['anne'])
+        self.db._bound = True
+        self.db.members_in_org = Mock(return_value=['anne'])
 
-        self.agent.add_to_org('bridge_club', ['anne'])
+        self.db.add_to_org('bridge_club', ['anne'])
 
         self.mock_conn.modify_s.assert_called_once_with(
             'cn=bridge_club,ou=Organisations,o=EIONET,l=Europe', (
@@ -715,10 +715,10 @@ class OrganisationsTest(unittest.TestCase):
 
     def test_add_to_empty_org(self):
         self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
-        self.agent._bound = True
-        self.agent.members_in_org = Mock(return_value=[])
+        self.db._bound = True
+        self.db.members_in_org = Mock(return_value=[])
 
-        self.agent.add_to_org('bridge_club', ['anne'])
+        self.db.add_to_org('bridge_club', ['anne'])
 
         self.mock_conn.modify_s.assert_called_once_with(
             'cn=bridge_club,ou=Organisations,o=EIONET,l=Europe', (
@@ -730,9 +730,9 @@ class OrganisationsTest(unittest.TestCase):
 
 class OrganisationEditTest(unittest.TestCase):
     def setUp(self):
-        self.agent = StubbedLdapAgent(ldap_server='')
-        self.agent._bound = True
-        self.mock_conn = self.agent.conn
+        self.db = StubbedUsersDB(ldap_server='')
+        self.db._bound = True
+        self.mock_conn = self.db.conn
         self.mock_conn.search_s.return_value = [
             ('cn=bridge_club,ou=Organisations,o=EIONET,l=Europe', {
                 'o': ['Ye olde bridge club'],
@@ -741,7 +741,7 @@ class OrganisationEditTest(unittest.TestCase):
         self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
 
     def test_change_nothing(self):
-        self.agent.set_org_info('bridge_club', {
+        self.db.set_org_info('bridge_club', {
             'name': u"Ye olde bridge club",
             'url': u"http://bridge.example.com/",
         })
@@ -749,7 +749,7 @@ class OrganisationEditTest(unittest.TestCase):
         assert self.mock_conn.modify_s.call_count == 0
 
     def test_add_one(self):
-        self.agent.set_org_info('bridge_club', {
+        self.db.set_org_info('bridge_club', {
             'name': u"Ye olde bridge club",
             'url': u"http://bridge.example.com/",
             'phone': u"555 2222",
@@ -761,7 +761,7 @@ class OrganisationEditTest(unittest.TestCase):
                 bridge_club_dn, tuple(modify_statements))
 
     def test_change_one(self):
-        self.agent.set_org_info('bridge_club', {
+        self.db.set_org_info('bridge_club', {
             'name': u"Ye new bridge club",
             'url': u"http://bridge.example.com/",
         })
@@ -772,7 +772,7 @@ class OrganisationEditTest(unittest.TestCase):
                 bridge_club_dn, tuple(modify_statements))
 
     def test_remove_one(self):
-        self.agent.set_org_info('bridge_club', {
+        self.db.set_org_info('bridge_club', {
             'url': u"http://bridge.example.com/",
         })
 
@@ -782,7 +782,7 @@ class OrganisationEditTest(unittest.TestCase):
                 bridge_club_dn, tuple(modify_statements))
 
     def test_unicode(self):
-        self.agent.set_org_info('bridge_club', {
+        self.db.set_org_info('bridge_club', {
             'name': u"\u0143\xe9w n\xe6\u1e41",
             'url': u"http://bridge.example.com/",
         })

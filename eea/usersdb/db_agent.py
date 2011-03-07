@@ -49,7 +49,7 @@ def log_ldap_exceptions(func):
             raise
     return wrapper
 
-class LdapAgent(object):
+class UsersDB(object):
     def __init__(self, **config):
         self.conn = self.connect(config['ldap_server'])
         self._encoding = config.get('encoding', 'utf-8')
