@@ -383,14 +383,17 @@ class UsersDB(object):
         user_dn = self._user_dn(user_id)
         if modify_statements:
             out[user_dn] = modify_statements
-        for org_id in add_to_orgs:
-            out[self._org_dn(org_id)] = [
-                (ldap.MOD_ADD, 'uniqueMember', [user_dn]),
-            ]
-        for org_id in remove_from_orgs:
-            out[self._org_dn(org_id)] = [
-                (ldap.MOD_DELETE, 'uniqueMember', [user_dn]),
-            ]
+
+# adding/removing oneself from organizations is disabled until CIRCA is
+# phased out
+#        for org_id in add_to_orgs:
+#            out[self._org_dn(org_id)] = [
+#                (ldap.MOD_ADD, 'uniqueMember', [user_dn]),
+#            ]
+#        for org_id in remove_from_orgs:
+#            out[self._org_dn(org_id)] = [
+#                (ldap.MOD_DELETE, 'uniqueMember', [user_dn]),
+#            ]
 
         return out
 
