@@ -10,6 +10,7 @@ user_attr_map = {
     'first_name': 'givenName',
     'last_name': 'sn',
     'full_name': 'cn',
+    'job_title': 'title',
     'email': 'mail',
     'phone': 'telephoneNumber',
     'organisation': 'o',
@@ -37,8 +38,9 @@ class NameAlreadyExists(Exception): pass
 
 class OrgRenameError(Exception): pass
 
-editable_user_fields = ['first_name', 'last_name', 'email', 'organisation',
-                        'url', 'postal_address', 'phone']
+editable_user_fields = ['first_name', 'last_name', 'job_title', 'email',
+                        'organisation', 'url', 'postal_address',
+                        'phone', 'fax']
 editable_org_fields = list(org_attr_map)
 
 ORG_LITERAL = 'literal'
