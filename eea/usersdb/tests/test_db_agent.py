@@ -878,9 +878,9 @@ class LdapAgentUserEditingTest(unittest.TestCase):
 
         self.assertEqual(diff, {'uid=jsmith,ou=Users,o=EIONET,l=Europe': [
             (ldap.MOD_ADD, 'mail', ['jsmith@example.com']),
-            (ldap.MOD_DELETE, 'labeledURI', ['http://example.com/~jsmith']),
             (ldap.MOD_REPLACE, 'postalAddress', [
                                     'Kongens Nytorv 6, Copenhagen, Denmark']),
+            (ldap.MOD_DELETE, 'labeledURI', ['http://example.com/~jsmith']),
         ]})
 
     def test_update_full_name(self):

@@ -6,7 +6,7 @@ import ldap, ldap.filter
 
 log = logging.getLogger(__name__)
 
-user_attr_map = {
+EIONET_USER_SCHEMA = {
     'first_name': 'givenName',
     'last_name': 'sn',
     'full_name': 'cn',
@@ -19,7 +19,7 @@ user_attr_map = {
     'url': 'labeledURI',
 }
 
-org_attr_map = {
+EIONET_ORG_SCHEMA = {
     'name': 'o',
     'phone': 'telephoneNumber',
     'fax': 'facsimileTelephoneNumber',
@@ -38,10 +38,9 @@ class NameAlreadyExists(Exception): pass
 
 class OrgRenameError(Exception): pass
 
-editable_user_fields = ['first_name', 'last_name', 'job_title', 'email',
-                        'organisation', 'url', 'postal_address',
-                        'phone', 'fax']
-editable_org_fields = list(org_attr_map)
+editable_user_fields = sorted(key for key in EIONET_USER_SCHEMA
+                              if key != 'full_name')
+editable_org_fields = list(EIONET_ORG_SCHEMA)
 
 ORG_LITERAL = 'literal'
 ORG_BY_ID = 'by_id'
@@ -58,6 +57,9 @@ def log_ldap_exceptions(func):
     return wrapper
 
 class UsersDB(object):
+    user_schema = EIONET_USER_SCHEMA
+    org_schema = EIONET_ORG_SCHEMA
+
     def __init__(self, **config):
         self.conn = self.connect(config['ldap_server'])
         self._encoding = config.get('encoding', 'utf-8')
@@ -131,7 +133,7 @@ class UsersDB(object):
 
     def _unpack_user_info(self, dn, attr):
         out = {'dn': dn, 'id': self._user_id(dn)}
-        for name, ldap_name in user_attr_map.iteritems():
+        for name, ldap_name in self.user_schema.iteritems():
             if ldap_name in attr:
                 assert len(attr[ldap_name]) == 1
                 py_value = attr[ldap_name][0].decode(self._encoding)
@@ -147,7 +149,7 @@ class UsersDB(object):
 
     def _unpack_org_info(self, dn, attr):
         out = {'dn': dn, 'id': self._org_id(dn)}
-        for name, ldap_name in org_attr_map.iteritems():
+        for name, ldap_name in self.org_schema.iteritems():
             if ldap_name in attr:
                 out[name] = attr[ldap_name][0].decode(self._encoding)
             else:
@@ -359,7 +361,7 @@ class UsersDB(object):
         for name in editable_user_fields + ['full_name']:
             old_value = old_info.get(name, u"")
             new_value = new_info.get(name, u"")
-            ldap_name = user_attr_map[name]
+            ldap_name = self.user_schema[name]
 
             if old_value == new_value == '':
                 pass
@@ -414,10 +416,10 @@ class UsersDB(object):
         def pack(value):
             return [value.encode(self._encoding)]
 
-        for name in org_attr_map:
+        for name in self.org_schema:
             old_value = old_info.get(name, u"")
             new_value = new_info.get(name, u"")
-            ldap_name = org_attr_map[name]
+            ldap_name = self.org_schema[name]
 
             if old_value == new_value == '':
                 pass
@@ -449,7 +451,7 @@ class UsersDB(object):
         for name, value in sorted(org_info.iteritems()):
             if value == "":
                 continue
-            attrs.append( (org_attr_map[name], [value.encode('utf-8')]) )
+            attrs.append( (self.org_schema[name], [value.encode('utf-8')]) )
 
         result = self.conn.add_s(self._org_dn(org_id), attrs)
         assert result == (ldap.RES_ADD, [])
