@@ -13,7 +13,7 @@ EIONET_USER_SCHEMA = {
     'job_title': 'title',
     'email': 'mail',
     'phone': 'telephoneNumber',
-    'mobile': 'mobileTelephoneNumber',
+    'mobile': 'mobile',
     'organisation': 'o',
     'postal_address': 'postalAddress',
     'fax': 'facsimileTelephoneNumber',
@@ -39,8 +39,7 @@ class NameAlreadyExists(Exception): pass
 
 class OrgRenameError(Exception): pass
 
-editable_user_fields = sorted(key for key in EIONET_USER_SCHEMA
-                              if key != 'full_name')
+editable_user_fields = sorted(set(EIONET_USER_SCHEMA) - set(['full_name']))
 editable_org_fields = list(EIONET_ORG_SCHEMA)
 
 ORG_LITERAL = 'literal'
