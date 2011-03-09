@@ -841,7 +841,7 @@ class OrganisationEditTest(unittest.TestCase):
         })
 
         bridge_club_dn = 'cn=bridge_club,ou=Organisations,o=EIONET,l=Europe'
-        modify_statements = [ (ldap.MOD_DELETE, 'o', ['Ye olde bridge club']) ]
+        modify_statements = [ (ldap.MOD_DELETE, 'o', []) ]
         self.mock_conn.modify_s.assert_called_once_with(
                 bridge_club_dn, tuple(modify_statements))
 
@@ -880,7 +880,7 @@ class LdapAgentUserEditingTest(unittest.TestCase):
             (ldap.MOD_ADD, 'mail', ['jsmith@example.com']),
             (ldap.MOD_REPLACE, 'postalAddress', [
                                     'Kongens Nytorv 6, Copenhagen, Denmark']),
-            (ldap.MOD_DELETE, 'labeledURI', ['http://example.com/~jsmith']),
+            (ldap.MOD_DELETE, 'labeledURI', []),
         ]})
 
     def test_update_full_name(self):
@@ -928,7 +928,7 @@ class LdapAgentUserEditingTest(unittest.TestCase):
         self.db.set_user_info('jsmith', {})
 
         modify_statements = (
-            (ldap.MOD_DELETE, 'mail', ["jsmith@example.com"]),
+            (ldap.MOD_DELETE, 'mail', []),
         )
         self.mock_conn.modify_s.assert_called_once_with(
             self.db._user_dn('jsmith'), modify_statements)
@@ -1050,7 +1050,7 @@ class LdapAgentOrganisationsTest(unittest.TestCase):
                 ['bridge_club', 'poker_club'])
 
         self.assertEqual(diff, {
-            jsmith_dn: [(ldap.MOD_DELETE, 'o', [u"My own little club"])],
+            jsmith_dn: [(ldap.MOD_DELETE, 'o', [])],
             bridge_club_dn: [(ldap.MOD_DELETE, 'uniqueMember', [jsmith_dn])],
             poker_club_dn: [(ldap.MOD_DELETE, 'uniqueMember', [jsmith_dn])],
             yachting_club_dn: [(ldap.MOD_ADD, 'uniqueMember', [jsmith_dn])],

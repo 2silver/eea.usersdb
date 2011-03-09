@@ -370,7 +370,7 @@ class UsersDB(object):
                 do(ldap.MOD_ADD, ldap_name, pack(new_value))
 
             elif new_value == '':
-                do(ldap.MOD_DELETE, ldap_name, pack(old_value))
+                do(ldap.MOD_DELETE, ldap_name, [])
 
             elif old_value != new_value:
                 do(ldap.MOD_REPLACE, ldap_name, pack(new_value))
@@ -428,7 +428,7 @@ class UsersDB(object):
                 yield (ldap.MOD_ADD, ldap_name, pack(new_value))
 
             elif new_value == '':
-                yield (ldap.MOD_DELETE, ldap_name, pack(old_value))
+                yield (ldap.MOD_DELETE, ldap_name, [])
 
             elif old_value != new_value:
                 yield (ldap.MOD_REPLACE, ldap_name, pack(new_value))
