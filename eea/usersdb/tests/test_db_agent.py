@@ -965,6 +965,36 @@ class LdapAgentUserEditingTest(unittest.TestCase):
         self.mock_conn.modify_s.assert_called_once_with(
             self.db._user_dn('jsmith'), modify_statements)
 
+    def test_all_fields(self):
+        from eea.usersdb.db_agent import EIONET_USER_SCHEMA, ORG_LITERAL
+
+        def testvalue(vary, name):
+            if name == 'full_name':
+                return '%s %s' % (testvalue(vary, 'first_name'),
+                                  testvalue(vary, 'last_name'))
+            else:
+                return 'value %s for %r' % (vary, name)
+
+        old_jsmith_ldap = {}
+        ldap_mod_statements = []
+        new_info = {}
+        for name, ldap_name in EIONET_USER_SCHEMA.iteritems():
+            old_jsmith_ldap[ldap_name] = [testvalue('one', name)]
+            new_value = testvalue('two', name)
+            ldap_mod_statements += [(ldap.MOD_REPLACE, ldap_name, [new_value])]
+            if name == 'organisation':
+                new_value = (ORG_LITERAL, new_value)
+            new_info[name] = new_value
+
+        jsmith_dn = 'uid=jsmith,ou=Users,o=EIONET,l=Europe'
+        self.mock_conn.search_s.return_value = [(jsmith_dn, old_jsmith_ldap)]
+        self.mock_conn.modify_s.return_value = (ldap.RES_MODIFY, [])
+
+        self.db.set_user_info('jsmith', new_info)
+
+        self.assertEqual(sorted(self.mock_conn.modify_s.call_args[0][1]),
+                         sorted(ldap_mod_statements))
+
 
 class LdapAgentOrganisationsTest(unittest.TestCase):
     def setUp(self):

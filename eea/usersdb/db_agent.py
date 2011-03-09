@@ -13,6 +13,7 @@ EIONET_USER_SCHEMA = {
     'job_title': 'title',
     'email': 'mail',
     'phone': 'telephoneNumber',
+    'mobile': 'mobileTelephoneNumber',
     'organisation': 'o',
     'postal_address': 'postalAddress',
     'fax': 'facsimileTelephoneNumber',
