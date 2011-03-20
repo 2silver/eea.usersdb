@@ -40,11 +40,7 @@ class NameAlreadyExists(Exception): pass
 class OrgRenameError(Exception): pass
 
 editable_user_fields = sorted(set(EIONET_USER_SCHEMA) - set(['full_name']))
-editable_org_fields = list(EIONET_ORG_SCHEMA)
-
-ORG_LITERAL = 'literal'
-ORG_BY_ID = 'by_id'
-BLANK_ORG = (ORG_LITERAL, u"")
+editable_org_fields = list(EIONET_ORG_SCHEMA) # TODO + ['organisation_links']
 
 def log_ldap_exceptions(func):
     @wraps(func)
@@ -136,14 +132,9 @@ class UsersDB(object):
         for name, ldap_name in self.user_schema.iteritems():
             if ldap_name in attr:
                 assert len(attr[ldap_name]) == 1
-                py_value = attr[ldap_name][0].decode(self._encoding)
+                out[name] = attr[ldap_name][0].decode(self._encoding)
             else:
-                py_value = u""
-
-            if name == 'organisation':
-                out[name] = (ORG_LITERAL, py_value)
-            else:
-                out[name] = py_value
+                out[name] = u""
 
         return out
 
@@ -260,10 +251,7 @@ class UsersDB(object):
         assert dn == query_dn
 
         user_info = self._unpack_user_info(dn, attr)
-        if user_info['organisation'] == BLANK_ORG:
-            org_ids = self._search_user_in_orgs(user_id)
-            if org_ids:
-                user_info['organisation'] = (ORG_BY_ID, org_ids[0])
+        #user_info['organisation_links'] = self._search_user_in_orgs(user_id)
 
         return user_info
 
@@ -331,27 +319,10 @@ class UsersDB(object):
         def pack(value):
             return [value.encode(self._encoding)]
 
-        def unpack_org_tuple(org_tuple):
-            v_type, v_value = org_tuple
-            if v_type == ORG_LITERAL:
-                return v_value, []
-            elif v_type == ORG_BY_ID:
-                return u"", [v_value]
-            else:
-                raise ValueError('Unknown organisation type: %r' % v_type)
-
         # normalize user_info dictionaries
         old_info = dict(old_info)
         new_info = dict(new_info)
-        old_info.setdefault('organisation', BLANK_ORG)
-        new_info.setdefault('organisation', BLANK_ORG)
         self._update_full_name(new_info)
-
-        # special case for the `organisation` field
-        old_info['organisation'], _ignored = \
-                unpack_org_tuple(old_info['organisation'])
-        new_info['organisation'], new_org_ids = \
-                unpack_org_tuple(new_info['organisation'])
 
         # compute delta
         modify_statements = []
@@ -375,10 +346,8 @@ class UsersDB(object):
             elif old_value != new_value:
                 do(ldap.MOD_REPLACE, ldap_name, pack(new_value))
 
-        # we allow for multiple values coming from LDAP but we only save a
-        # single organisation (literal or by id)
-        add_to_orgs = set(new_org_ids) - set(existing_orgs)
-        remove_from_orgs = set(existing_orgs) - set(new_org_ids)
+#        add_to_orgs = set(new_org_ids) - set(existing_orgs)
+#        remove_from_orgs = set(existing_orgs) - set(new_org_ids)
 
         # compose output for ldap calls
         out = {}
