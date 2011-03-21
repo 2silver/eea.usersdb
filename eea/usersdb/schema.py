@@ -4,6 +4,7 @@ INVALID_PHONE_MESSAGE = (
     "Invalid telephone number. It must be written "
     "using international notation, starting with \"+\"."
 )
+INVALID_URL = "Invalid URL. It must begin with \"http://\" or \"https://\"."
 
 class UserInfoSchema(colander.MappingSchema):
     """
@@ -24,9 +25,12 @@ class UserInfoSchema(colander.MappingSchema):
     organisation   = colander.SchemaNode(colander.String(), missing='')
 
 _phone_validator = colander.Regex(r'^\+[\d ]+$', msg=INVALID_PHONE_MESSAGE)
+_url_validator = colander.Regex(r'^http[s]?\://', msg=INVALID_URL)
 UserInfoSchema.phone.validator = _phone_validator
 UserInfoSchema.mobile.validator = _phone_validator
 UserInfoSchema.fax.validator = _phone_validator
+UserInfoSchema.email.validator = colander.Email()
+UserInfoSchema.url.validator = _url_validator
 
 _description_map = {
     'first_name': "First name",
