@@ -1,6 +1,6 @@
 import logging
 from string import ascii_lowercase
-from functools import wraps
+from _backport import wraps
 import re
 import ldap, ldap.filter
 
