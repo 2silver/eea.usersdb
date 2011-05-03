@@ -330,6 +330,20 @@ class UsersDBTest(unittest.TestCase):
         self.db._unpack_user_info.assert_called_with(jsmith_dn, jsmith_info)
         self.assertEqual(results, [self.db._unpack_user_info.return_value])
 
+    def test_search_user_by_email(self):
+        self.db._unpack_user_info = Mock()
+        jsmith_dn = self.db._user_dn('jsmith')
+        jsmith_info = Mock()
+        self.mock_conn.search_s.return_value = [ (jsmith_dn, jsmith_info) ]
+
+        results = self.db.search_user_by_email(u'jsmith@example.com')
+
+        self.mock_conn.search_s.assert_called_once_with(
+            self.db._user_dn_suffix, ldap.SCOPE_ONELEVEL,
+            filterstr=('(&(objectClass=person)(mail=jsmith@example.com))'))
+        self.db._unpack_user_info.assert_called_with(jsmith_dn, jsmith_info)
+        self.assertEqual(results, [self.db._unpack_user_info.return_value])
+
     def test_search_org(self):
         self.db._unpack_org_info = Mock()
         club_dn = self.db._org_dn('bridge_club')

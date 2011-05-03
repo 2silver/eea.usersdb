@@ -573,6 +573,20 @@ class UsersDB(object):
             result = self.conn.delete_s(dn)
             assert result == (ldap.RES_DELETE, [])
 
+    def raw_ldap_search(self, *args, **kwargs):
+        return self.conn.search_s(*args, **kwargs)
+
+    @log_ldap_exceptions
+    def search_user_by_email(self, email):
+        query = email.encode(self._encoding)
+        pattern = '(&(objectClass=person)(mail=%s))'
+        query_filter = ldap.filter.filter_format(pattern, (query,))
+
+        result = self.conn.search_s(self._user_dn_suffix, ldap.SCOPE_ONELEVEL,
+                                    filterstr=query_filter)
+
+        return [self._unpack_user_info(dn, attr) for (dn, attr) in result]
+
     @log_ldap_exceptions
     def search_user(self, name):
         query = name.lower().encode(self._encoding)
