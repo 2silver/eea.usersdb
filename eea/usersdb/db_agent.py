@@ -1,5 +1,5 @@
 import logging
-from string import ascii_lowercase
+from string import ascii_lowercase, digits
 from _backport import wraps
 import re
 import ldap, ldap.filter
@@ -300,6 +300,29 @@ class UsersDB(object):
     @log_ldap_exceptions
     def bind_user(self, user_id, user_pw):
         return self.perform_bind(self._user_dn(user_id), user_pw)
+
+    @log_ldap_exceptions
+    def create_user(self, user_id, user_info):
+        """ Create a new user with attributes from `user_info` """
+        assert self._bound, "call `perform_bind` before `create_user`"
+        log.info("Creating user %r", user_id)
+        assert type(user_id) is str
+        for ch in user_id:
+            assert ch in ascii_lowercase + digits + '_'
+
+        attrs = [
+            ('objectClass', ['top', 'person', 'organizationalPerson',
+                             'inetOrgPerson']),
+            ('uid', [user_id]),
+        ]
+
+        for name, value in sorted(user_info.iteritems()):
+            if value == "":
+                continue
+            attrs.append( (self.user_schema[name], [value.encode('utf-8')]) )
+
+        result = self.conn.add_s(self._user_dn(user_id), attrs)
+        assert result == (ldap.RES_ADD, [])
 
     @log_ldap_exceptions
     def set_user_password(self, user_id, old_pw, new_pw):
@@ -767,3 +790,8 @@ class UsersDB(object):
         return dict( (self._org_id(dn),
                       attr.get('o', [u""])[0].decode(self._encoding))
                      for dn, attr in result )
+
+def create_user_with_properties(db, user_id, **user_info):
+    """ Create a user with the given information """
+    db._update_full_name(user_info)
+    db.create_user(user_id, user_info)
