@@ -412,7 +412,8 @@ class TestCreateRole(unittest.TestCase):
         self.db.create_role('A-B-X', "My new test role")
         self.mock_conn.add_s.assert_called_once_with(
             'cn=A-B-X,cn=A-B,cn=A,ou=Roles,o=EIONET,l=Europe',
-            [('objectClass', ['top', 'groupOfUniqueNames']),
+            [('cn', ['A-B-X']),
+             ('objectClass', ['top', 'groupOfUniqueNames']),
              ('ou', ['X']),
              ('uniqueMember', ['']),
              ('description', ['My new test role'])])
@@ -429,7 +430,8 @@ class TestCreateRole(unittest.TestCase):
         self.db.create_role('A-B-Z', "")
         self.mock_conn.add_s.assert_called_once_with(
             'cn=A-B-Z,cn=A-B,cn=A,ou=Roles,o=EIONET,l=Europe',
-            [('objectClass',
+            [('cn', ['A-B-Z']),
+             ('objectClass',
              ['top', 'groupOfUniqueNames']),
              ('ou', ['Z']),
              ('uniqueMember', [''])])
@@ -438,7 +440,8 @@ class TestCreateRole(unittest.TestCase):
         self.db.create_role('T', "top role")
         self.mock_conn.add_s.assert_called_once_with(
             'cn=T,ou=Roles,o=EIONET,l=Europe',
-            [('objectClass', ['top', 'groupOfUniqueNames']),
+            [('cn', ['T']),
+             ('objectClass', ['top', 'groupOfUniqueNames']),
              ('ou', ['T']),
              ('uniqueMember', ['']),
              ('description', ['top role']),])
@@ -447,7 +450,8 @@ class TestCreateRole(unittest.TestCase):
         self.db.create_role('r', u"Some r\u014dle")
         self.mock_conn.add_s.assert_called_once_with(
             'cn=r,ou=Roles,o=EIONET,l=Europe',
-            [('objectClass', ['top', 'groupOfUniqueNames']),
+            [('cn', ['r']),
+             ('objectClass', ['top', 'groupOfUniqueNames']),
              ('ou', ['r']),
              ('uniqueMember', ['']),
              ('description', ['Some r\xc5\x8dle']),])
@@ -654,6 +658,7 @@ class OrganisationsTest(unittest.TestCase):
 
         poker_club_dn = 'cn=poker_club,ou=Organisations,o=EIONET,l=Europe'
         self.mock_conn.add_s.assert_called_once_with(poker_club_dn, [
+            ('cn', ['poker_club']),
             ('objectClass', ['top', 'groupOfUniqueNames',
                              'organizationGroup', 'labeledURIObject']),
             ('uniqueMember', ['']),

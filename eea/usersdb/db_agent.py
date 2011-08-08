@@ -412,6 +412,7 @@ class UsersDB(object):
             assert ch in ascii_lowercase + '_'
 
         attrs = [
+            ('cn', [org_id]),
             ('objectClass', ['top', 'groupOfUniqueNames',
                              'organizationGroup', 'labeledURIObject']),
             ('uniqueMember', ['']),
@@ -528,6 +529,7 @@ class UsersDB(object):
         log.info("Creating role %r", role_id)
 
         attrs = [
+            ('cn', [role_id]),
             ('objectClass', ['top', 'groupOfUniqueNames']),
             ('ou', [role_id.split('-')[-1]]),
             ('uniqueMember', ['']),
