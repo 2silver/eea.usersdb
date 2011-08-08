@@ -404,6 +404,24 @@ class UsersDB(object):
             result = self.conn.modify_s(dn, tuple(modify_statements))
             assert result == (ldap.RES_MODIFY, [])
 
+    @log_ldap_exceptions
+    def delete_user(self, user_id):
+        """
+        Remove `user_id` from any organisations and roles, then delete the
+        user.
+        """
+        assert self._bound, "call `perform_bind` before `delete_user`"
+
+        for org_id in self._search_user_in_orgs(user_id):
+            self.remove_from_org(org_id, [user_id])
+
+        for role_id in self.list_member_roles('user', user_id):
+            self.remove_from_role(role_id, 'user', user_id)
+
+        log.info("Deleting user %r", user_id)
+        result = self.conn.delete_s(self._user_dn(user_id))
+        assert result == (ldap.RES_DELETE, [])
+
     def _org_info_diff(self, org_id, old_info, new_info):
         def pack(value):
             return [value.encode(self._encoding)]
