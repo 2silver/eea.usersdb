@@ -415,7 +415,8 @@ class UsersDB(object):
         for org_id in self._search_user_in_orgs(user_id):
             self.remove_from_org(org_id, [user_id])
 
-        for role_id in self.list_member_roles('user', user_id):
+        roles = self.list_member_roles('user', user_id)
+        for role_id in sorted(roles, reverse=True):
             self.remove_from_role(role_id, 'user', user_id)
 
         log.info("Deleting user %r", user_id)
