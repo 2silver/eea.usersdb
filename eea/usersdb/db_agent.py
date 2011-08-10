@@ -308,7 +308,9 @@ class UsersDB(object):
         log.info("Creating user %r", user_id)
         assert type(user_id) is str
         for ch in user_id:
-            assert ch in ascii_lowercase + digits + '_'
+            if not ch in ascii_lowercase + digits + '_':
+                raise ValueError("Only lowercase, digits and underscores are "
+                        "allowed in the username")
 
         attrs = [
             ('objectClass', ['top', 'person', 'organizationalPerson',
